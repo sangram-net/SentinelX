@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "./App.css";
+import sentinelxLogo from "./assets/sentinelx-logo.png";
 
 const DETECTION_RULES = {
   ssh: {
@@ -69,6 +70,7 @@ function extractUsername(line) {
 
   for (const pattern of patterns) {
     const match = line.match(pattern);
+
     if (match) return match[1];
   }
 
@@ -124,7 +126,9 @@ function analyzeLogs(logText) {
         ...event,
         type,
         severity:
-          type === "Web Scanning" ? "MEDIUM" : "HIGH",
+          type === "Web Scanning"
+            ? "MEDIUM"
+            : "HIGH",
       });
 
       const key = `${type}|${event.source}`;
@@ -139,6 +143,7 @@ function analyzeLogs(logText) {
       }
 
       const incident = detectionMap.get(key);
+
       incident.count += 1;
       incident.events.push(event);
     });
@@ -151,14 +156,18 @@ function analyzeLogs(logText) {
   const sourceUsers = new Map();
 
   events
-    .filter((event) => event.type === "SSH Brute Force")
+    .filter(
+      (event) => event.type === "SSH Brute Force"
+    )
     .forEach((event) => {
       if (!sourceUsers.has(event.source)) {
         sourceUsers.set(event.source, new Set());
       }
 
       if (event.username !== "Unknown") {
-        sourceUsers.get(event.source).add(event.username);
+        sourceUsers
+          .get(event.source)
+          .add(event.username);
       }
     });
 
@@ -238,7 +247,9 @@ function buildEvidence(incident) {
       ...new Set(
         incident.events
           .map((event) => event.username)
-          .filter((username) => username !== "Unknown")
+          .filter(
+            (username) => username !== "Unknown"
+          )
       ),
     ];
 
@@ -249,7 +260,9 @@ function buildEvidence(incident) {
       : `${incident.count} authentication failures from ${incident.source}.`;
   }
 
-  if (incident.type === "SQL Injection Attempt") {
+  if (
+    incident.type === "SQL Injection Attempt"
+  ) {
     return `Suspicious SQL syntax detected in request activity from ${incident.source}.`;
   }
 
@@ -271,7 +284,9 @@ function buildWhyDetected(incident) {
     return "The same source attempted authentication against multiple accounts, matching password-spraying behavior.";
   }
 
-  if (incident.type === "SQL Injection Attempt") {
+  if (
+    incident.type === "SQL Injection Attempt"
+  ) {
     return "The request contains SQL control characters or SQL keywords commonly associated with injection attempts.";
   }
 
@@ -299,7 +314,9 @@ function buildAttackStory(incident) {
     ];
   }
 
-  if (incident.type === "SQL Injection Attempt") {
+  if (
+    incident.type === "SQL Injection Attempt"
+  ) {
     return [
       "A web request contained suspicious SQL syntax.",
       "The request originated from the same external source.",
@@ -315,7 +332,9 @@ function buildAttackStory(incident) {
     ];
   }
 
-  return ["Suspicious activity detected and correlated by SentinelX."];
+  return [
+    "Suspicious activity detected and correlated by SentinelX.",
+  ];
 }
 
 function buildResponse(incident) {
@@ -327,7 +346,9 @@ function buildResponse(incident) {
     return "Review affected accounts, enforce MFA, check for compromised credentials, and investigate the source IP.";
   }
 
-  if (incident.type === "SQL Injection Attempt") {
+  if (
+    incident.type === "SQL Injection Attempt"
+  ) {
     return "Review the affected endpoint, validate and parameterize database queries, inspect application logs, and block repeated malicious requests.";
   }
 
@@ -355,7 +376,9 @@ function App() {
       const logText = await file.text();
 
       if (!logText.trim()) {
-        throw new Error("The selected log file is empty.");
+        throw new Error(
+          "The selected log file is empty."
+        );
       }
 
       /*
@@ -376,7 +399,8 @@ function App() {
   };
 
   const handleFileChange = (event) => {
-    const selectedFile = event.target.files?.[0];
+    const selectedFile =
+      event.target.files?.[0];
 
     if (!selectedFile) return;
 
@@ -389,7 +413,12 @@ function App() {
     <div className="app">
       <header className="header">
         <div className="brand">
-          <div className="logo">SX</div>
+          <div className="logo">
+            <img
+              src={sentinelxLogo}
+              alt="SentinelX logo"
+            />
+          </div>
 
           <div>
             <h1>SentinelX</h1>
@@ -417,9 +446,10 @@ function App() {
             </h2>
 
             <p className="description">
-              SentinelX analyzes security logs directly in
-              your browser and turns suspicious activity
-              into explainable security incidents.
+              SentinelX analyzes security logs directly
+              in your browser and turns suspicious
+              activity into explainable security
+              incidents.
             </p>
           </div>
 
@@ -429,8 +459,8 @@ function App() {
             <h3>Analyze a log file</h3>
 
             <p>
-              Upload a .log or .txt file. Analysis happens
-              locally in your browser.
+              Upload a .log or .txt file. Analysis
+              happens locally in your browser.
             </p>
 
             <label className="file-input">
@@ -441,7 +471,9 @@ function App() {
               />
 
               <span>
-                {file ? file.name : "Choose log file"}
+                {file
+                  ? file.name
+                  : "Choose log file"}
               </span>
             </label>
 
@@ -470,16 +502,21 @@ function App() {
             <section className="stats">
               <div className="stat-card">
                 <span>LOG EVENTS</span>
-                <strong>{result.totalLines}</strong>
+                <strong>
+                  {result.totalLines}
+                </strong>
               </div>
 
               <div className="stat-card">
                 <span>DETECTED EVENTS</span>
-                <strong>{result.stats.events}</strong>
+                <strong>
+                  {result.stats.events}
+                </strong>
               </div>
 
               <div className="stat-card">
                 <span>HIGH SEVERITY</span>
+
                 <strong className="orange">
                   {result.stats.high}
                 </strong>
@@ -487,6 +524,7 @@ function App() {
 
               <div className="stat-card">
                 <span>INCIDENTS</span>
+
                 <strong>
                   {result.stats.incidents}
                 </strong>
@@ -510,88 +548,115 @@ function App() {
 
               {result.incidents.length === 0 ? (
                 <div className="empty">
-                  <div className="empty-icon">✓</div>
+                  <div className="empty-icon">
+                    ✓
+                  </div>
 
                   <h3>No threats detected</h3>
 
                   <p>
-                    SentinelX did not find activity matching
-                    its current detection rules.
+                    SentinelX did not find activity
+                    matching its current detection
+                    rules.
                   </p>
                 </div>
               ) : (
                 <div className="incident-list">
-                  {result.incidents.map((incident, index) => (
-                    <article
-                      className="incident-card"
-                      key={`${incident.type}-${incident.source}-${index}`}
-                    >
-                      <div className="incident-top">
-                        <div>
-                          <span
-                            className={`severity ${incident.severity.toLowerCase()}`}
-                          >
-                            {incident.severity}
+                  {result.incidents.map(
+                    (incident, index) => (
+                      <article
+                        className="incident-card"
+                        key={`${incident.type}-${incident.source}-${index}`}
+                      >
+                        <div className="incident-top">
+                          <div>
+                            <span
+                              className={`severity ${incident.severity.toLowerCase()}`}
+                            >
+                              {incident.severity}
+                            </span>
+
+                            <h3>
+                              {incident.type}
+                            </h3>
+
+                            <p className="incident-meta">
+                              Source:{" "}
+                              <strong>
+                                {incident.source}
+                              </strong>
+                              {" · "}
+                              Events:{" "}
+                              <strong>
+                                {incident.count}
+                              </strong>
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="incident-grid">
+                          <div className="detail-block">
+                            <span>
+                              EVIDENCE
+                            </span>
+
+                            <p>
+                              {incident.evidence}
+                            </p>
+                          </div>
+
+                          <div className="detail-block">
+                            <span>
+                              WHY DETECTED
+                            </span>
+
+                            <p>
+                              {incident.why}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="story">
+                          <span>
+                            ATTACK STORY
                           </span>
 
-                          <h3>{incident.type}</h3>
+                          <div className="timeline">
+                            {incident.story.map(
+                              (
+                                step,
+                                stepIndex
+                              ) => (
+                                <div
+                                  className="timeline-item"
+                                  key={
+                                    stepIndex
+                                  }
+                                >
+                                  <div className="timeline-dot">
+                                    {stepIndex +
+                                      1}
+                                  </div>
 
-                          <p className="incident-meta">
-                            Source:{" "}
-                            <strong>
-                              {incident.source}
-                            </strong>
-                            {" · "}
-                            Events:{" "}
-                            <strong>
-                              {incident.count}
-                            </strong>
+                                  <p>{step}</p>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="response">
+                          <span>
+                            RECOMMENDED RESPONSE
+                          </span>
+
+                          <p>
+                            {incident.response}
                           </p>
                         </div>
-                      </div>
-
-                      <div className="incident-grid">
-                        <div className="detail-block">
-                          <span>EVIDENCE</span>
-                          <p>{incident.evidence}</p>
-                        </div>
-
-                        <div className="detail-block">
-                          <span>WHY DETECTED</span>
-                          <p>{incident.why}</p>
-                        </div>
-                      </div>
-
-                      <div className="story">
-                        <span>ATTACK STORY</span>
-
-                        <div className="timeline">
-                          {incident.story.map(
-                            (step, stepIndex) => (
-                              <div
-                                className="timeline-item"
-                                key={stepIndex}
-                              >
-                                <div className="timeline-dot">
-                                  {stepIndex + 1}
-                                </div>
-
-                                <p>{step}</p>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="response">
-                        <span>
-                          RECOMMENDED RESPONSE
-                        </span>
-
-                        <p>{incident.response}</p>
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    )
+                  )}
                 </div>
               )}
             </section>
@@ -623,7 +688,9 @@ function App() {
                       </div>
 
                       <div className="event-main">
-                        <strong>{event.type}</strong>
+                        <strong>
+                          {event.type}
+                        </strong>
 
                         <span>
                           {event.source} ·{" "}
@@ -631,7 +698,9 @@ function App() {
                         </span>
                       </div>
 
-                      <code>{event.raw}</code>
+                      <code>
+                        {event.raw}
+                      </code>
                     </div>
                   )
                 )}
@@ -640,18 +709,22 @@ function App() {
           </>
         )}
 
-        {!result && !loading && !error && (
-          <section className="empty">
-            <div className="empty-icon">⌁</div>
+        {!result &&
+          !loading &&
+          !error && (
+            <section className="empty">
+              <div className="empty-icon">
+                ⌁
+              </div>
 
-            <h3>Ready for analysis</h3>
+              <h3>Ready for analysis</h3>
 
-            <p>
-              Upload a security log to begin local threat
-              detection.
-            </p>
-          </section>
-        )}
+              <p>
+                Upload a security log to begin
+                local threat detection.
+              </p>
+            </section>
+          )}
 
         {loading && (
           <section className="empty">
@@ -660,12 +733,76 @@ function App() {
             <h3>Analyzing telemetry...</h3>
 
             <p>
-              SentinelX is parsing and correlating the
-              selected log locally.
+              SentinelX is parsing and correlating
+              the selected log locally.
             </p>
           </section>
         )}
       </main>
+
+      <footer className="footer">
+        <div className="footer-inner">
+          <div className="footer-brand">
+            <img
+              src={sentinelxLogo}
+              alt="SentinelX"
+              className="footer-logo"
+            />
+
+            <div>
+              <strong>SentinelX</strong>
+
+              <span>
+                Local Smart Log Sentinel
+              </span>
+            </div>
+          </div>
+
+          <div className="footer-socials">
+            <span className="social-label">
+              CONNECT
+            </span>
+
+            <a
+              className="social-link"
+              href="https://www.instagram.com/cyber_sangram"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Instagram
+            </a>
+
+            <a
+              className="social-link"
+              href="https://www.linkedin.com/in/sangramcloud"
+              target="_blank"
+              rel="noreferrer"
+            >
+              LinkedIn
+            </a>
+
+            <a
+              className="social-link"
+              href="https://github.com/sangram-net"
+              target="_blank"
+              rel="noreferrer"
+            >
+              GitHub
+            </a>
+          </div>
+        </div>
+
+        <div className="footer-bottom">
+          <span>
+            SentinelX · Local Smart Log Sentinel
+          </span>
+
+          <span>
+            Built for WCC Launchpad 30 · Open
+            Innovation
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }
