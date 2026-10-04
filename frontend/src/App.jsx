@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { jsPDF } from "jspdf";
 import "./App.css";
 import sentinelxLogo from "./assets/sentinelx-logo.png";
 
@@ -359,6 +360,494 @@ function buildResponse(incident) {
   return "Investigate the source and review surrounding log activity.";
 }
 
+/* ------------------------------------------------------------------
+   PDF REPORT
+------------------------------------------------------------------- */
+
+function addWrappedText(doc, text, x, y, maxWidth, lineHeight = 5) {
+  const lines = doc.splitTextToSize(
+    String(text || ""),
+    maxWidth
+  );
+
+  doc.text(lines, x, y);
+
+  return y + lines.length * lineHeight;
+}
+
+function ensurePageSpace(doc, y, required = 20) {
+  if (y + required > 280) {
+    doc.addPage();
+    return 18;
+  }
+
+  return y;
+}
+
+function addPdfSectionTitle(doc, title, y) {
+  y = ensurePageSpace(doc, y, 18);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(180, 75, 25);
+  doc.text(title, 15, y);
+
+  return y + 8;
+}
+
+function generateAnalyticsPdf(result, fileName) {
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 15;
+  const contentWidth = pageWidth - margin * 2;
+
+  let y = 18;
+
+  const addFooter = () => {
+    const pageCount = doc.internal.getNumberOfPages();
+
+    for (let page = 1; page <= pageCount; page++) {
+      doc.setPage(page);
+
+      doc.setDrawColor(225, 225, 225);
+      doc.line(
+        margin,
+        pageHeight - 13,
+        pageWidth - margin,
+        pageHeight - 13
+      );
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(110, 110, 110);
+
+      doc.text(
+        "SentinelX - Local Smart Log Sentinel",
+        margin,
+        pageHeight - 8
+      );
+
+      doc.text(
+        `WCC Launchpad 30 - Page ${page} of ${pageCount}`,
+        pageWidth - margin,
+        pageHeight - 8,
+        { align: "right" }
+      );
+    }
+  };
+
+  /* Header */
+  doc.setFillColor(15, 15, 15);
+  doc.rect(0, 0, pageWidth, 38, "F");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(24);
+  doc.setTextColor(239, 147, 98);
+  doc.text("SENTINELX", margin, 17);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(215, 215, 215);
+  doc.text(
+    "LOCAL SMART LOG SENTINEL",
+    margin,
+    25
+  );
+
+  doc.setFontSize(8);
+  doc.text(
+    "SECURITY ANALYTICS REPORT",
+    pageWidth - margin,
+    18,
+    { align: "right" }
+  );
+
+  doc.text(
+    "Browser-local analysis",
+    pageWidth - margin,
+    25,
+    { align: "right" }
+  );
+
+  y = 48;
+
+  /* Report metadata */
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(25, 25, 25);
+  doc.text("Analysis Summary", margin, y);
+
+  y += 9;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(75, 75, 75);
+
+  y = addWrappedText(
+    doc,
+    `Source file: ${fileName || "Unknown"}`,
+    margin,
+    y,
+    contentWidth
+  );
+
+  y = addWrappedText(
+    doc,
+    `Generated: ${new Date().toLocaleString()}`,
+    margin,
+    y + 1,
+    contentWidth
+  );
+
+  y += 5;
+
+  /* Statistics */
+  y = addPdfSectionTitle(
+    doc,
+    "Detection Statistics",
+    y
+  );
+
+  const stats = [
+    ["LOG EVENTS", result.totalLines],
+    ["DETECTED EVENTS", result.stats.events],
+    ["HIGH SEVERITY", result.stats.high],
+    ["MEDIUM SEVERITY", result.stats.medium],
+    ["INCIDENTS", result.stats.incidents],
+  ];
+
+  const boxWidth = (contentWidth - 8) / 3;
+  const boxHeight = 21;
+
+  stats.forEach(([label, value], index) => {
+    const row = Math.floor(index / 3);
+    const col = index % 3;
+
+    const x =
+      margin + col * (boxWidth + 4);
+    const boxY =
+      y + row * (boxHeight + 5);
+
+    doc.setFillColor(247, 247, 247);
+    doc.setDrawColor(225, 225, 225);
+    doc.roundedRect(
+      x,
+      boxY,
+      boxWidth,
+      boxHeight,
+      2,
+      2,
+      "FD"
+    );
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    doc.text(label, x + 4, boxY + 7);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.setTextColor(
+      label === "HIGH SEVERITY"
+        ? 190
+        : 30,
+      label === "HIGH SEVERITY"
+        ? 70
+        : 30,
+      label === "HIGH SEVERITY"
+        ? 25
+        : 30
+    );
+
+    doc.text(
+      String(value),
+      x + 4,
+      boxY + 16
+    );
+  });
+
+  y +=
+    Math.ceil(stats.length / 3) *
+      (boxHeight + 5) +
+    6;
+
+  /* Incidents */
+  y = addPdfSectionTitle(
+    doc,
+    "Detected Incidents",
+    y
+  );
+
+  if (result.incidents.length === 0) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(70, 70, 70);
+
+    y = addWrappedText(
+      doc,
+      "No threats were detected by the current SentinelX detection rules.",
+      margin,
+      y,
+      contentWidth
+    );
+
+    y += 5;
+  } else {
+    result.incidents.forEach(
+      (incident, index) => {
+        y = ensurePageSpace(doc, y, 58);
+
+        doc.setFillColor(250, 250, 250);
+        doc.setDrawColor(225, 225, 225);
+        doc.roundedRect(
+          margin,
+          y - 3,
+          contentWidth,
+          8,
+          2,
+          2,
+          "FD"
+        );
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+
+        doc.setTextColor(
+          incident.severity === "HIGH"
+            ? 190
+            : 180,
+          incident.severity === "HIGH"
+            ? 65
+            : 100,
+          30
+        );
+
+        doc.text(
+          `[${incident.severity}] ${incident.type}`,
+          margin + 4,
+          y + 2
+        );
+
+        y += 12;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(80, 80, 80);
+
+        doc.text(
+          `Source: ${incident.source}    Events: ${incident.count}`,
+          margin,
+          y
+        );
+
+        y += 7;
+
+        const blocks = [
+          ["Evidence", incident.evidence],
+          ["Why Detected", incident.why],
+          [
+            "Attack Story",
+            incident.story
+              .map(
+                (step, stepIndex) =>
+                  `${stepIndex + 1}. ${step}`
+              )
+              .join(" "),
+          ],
+          ["Recommended Response", incident.response],
+        ];
+
+        blocks.forEach(([title, text]) => {
+          y = ensurePageSpace(doc, y, 15);
+
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(8);
+          doc.setTextColor(40, 40, 40);
+          doc.text(title.toUpperCase(), margin, y);
+
+          y += 4;
+
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(8);
+          doc.setTextColor(75, 75, 75);
+
+          y = addWrappedText(
+            doc,
+            text,
+            margin,
+            y,
+            contentWidth,
+            4
+          );
+
+          y += 4;
+        });
+
+        if (
+          index <
+          result.incidents.length - 1
+        ) {
+          doc.setDrawColor(235, 235, 235);
+          doc.line(
+            margin,
+            y,
+            pageWidth - margin,
+            y
+          );
+
+          y += 8;
+        }
+      }
+    );
+  }
+
+  /* Raw telemetry */
+  y = ensurePageSpace(doc, y, 25);
+
+  doc.addPage();
+  y = 18;
+
+  y = addPdfSectionTitle(
+    doc,
+    "Raw Telemetry",
+    y
+  );
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(90, 90, 90);
+
+  y = addWrappedText(
+    doc,
+    `${result.analyzedEvents.length} detected event records included in this report.`,
+    margin,
+    y,
+    contentWidth
+  );
+
+  y += 5;
+
+  if (result.analyzedEvents.length === 0) {
+    y = addWrappedText(
+      doc,
+      "No detected event records were generated.",
+      margin,
+      y,
+      contentWidth
+    );
+  } else {
+    result.analyzedEvents.forEach(
+      (event, index) => {
+        y = ensurePageSpace(doc, y, 26);
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(
+          event.severity === "HIGH"
+            ? 190
+            : 180,
+          event.severity === "HIGH"
+            ? 65
+            : 100,
+          30
+        );
+
+        doc.text(
+          `${index + 1}. ${event.severity} - ${event.type}`,
+          margin,
+          y
+        );
+
+        y += 4;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(90, 90, 90);
+
+        doc.text(
+          `Source: ${event.source} | Time: ${event.timestamp}`,
+          margin,
+          y
+        );
+
+        y += 4;
+
+        doc.setFont("courier", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(55, 55, 55);
+
+        y = addWrappedText(
+          doc,
+          event.raw,
+          margin,
+          y,
+          contentWidth,
+          3.5
+        );
+
+        y += 5;
+      }
+    );
+  }
+
+  /* Final note */
+  y = ensurePageSpace(doc, y, 30);
+
+  y += 5;
+
+  doc.setFillColor(250, 244, 240);
+  doc.setDrawColor(235, 210, 195);
+  doc.roundedRect(
+    margin,
+    y,
+    contentWidth,
+    22,
+    2,
+    2,
+    "FD"
+  );
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(150, 65, 25);
+
+  doc.text(
+    "SENTINELX ANALYSIS NOTE",
+    margin + 5,
+    y + 7
+  );
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(90, 75, 70);
+
+  addWrappedText(
+    doc,
+    "This report contains findings generated by SentinelX's current local detection rules. Results are intended for security analysis and educational use and should be validated against the original system context.",
+    margin + 5,
+    y + 12,
+    contentWidth - 10,
+    3.5
+  );
+
+  addFooter();
+
+  const safeName =
+    (fileName || "sentinelx-analysis")
+      .replace(/\.[^/.]+$/, "")
+      .replace(/[^a-z0-9_-]/gi, "_");
+
+  doc.save(
+    `${safeName}-SentinelX-Analytics.pdf`
+  );
+}
+
 function App() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -382,7 +871,7 @@ function App() {
       }
 
       /*
-       * SentinelX now analyzes the log locally.
+       * SentinelX analyzes the log locally.
        * No Render API or external backend is required.
        */
       const analysis = analyzeLogs(logText);
@@ -541,9 +1030,32 @@ function App() {
                   <h2>Detected Incidents</h2>
                 </div>
 
-                <span className="live">
-                  ● LIVE ANALYSIS
-                </span>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <button
+                    className="analyze-button"
+                    onClick={() =>
+                      generateAnalyticsPdf(
+                        result,
+                        file?.name
+                      )
+                    }
+                    type="button"
+                  >
+                    DOWNLOAD ANALYTICS PDF
+                  </button>
+
+                  <span className="live">
+                    ● LIVE ANALYSIS
+                  </span>
+                </div>
               </div>
 
               {result.incidents.length === 0 ? (
