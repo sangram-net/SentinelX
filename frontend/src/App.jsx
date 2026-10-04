@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "./App.css";
+import sentinelxLogo from "./assets/sentinelx-logo.png";
 
 const DETECTION_RULES = {
   ssh: {
@@ -46,9 +47,7 @@ function extractIp(line) {
 }
 
 function extractTimestamp(line) {
-  const match = line.match(
-    /\[([^\]]+)\]/
-  );
+  const match = line.match(/\[([^\]]+)\]/);
 
   if (match) return match[1];
 
@@ -69,7 +68,10 @@ function extractUsername(line) {
 
   for (const pattern of patterns) {
     const match = line.match(pattern);
-    if (match) return match[1];
+
+    if (match) {
+      return match[1];
+    }
   }
 
   return "Unknown";
@@ -139,15 +141,12 @@ function analyzeLogs(logText) {
       }
 
       const incident = detectionMap.get(key);
+
       incident.count += 1;
       incident.events.push(event);
     });
   });
 
-  /*
-   * Password spraying:
-   * Multiple usernames targeted from the same source.
-   */
   const sourceUsers = new Map();
 
   events
@@ -221,9 +220,7 @@ function analyzeLogs(logText) {
 }
 
 function buildEvidence(incident) {
-  const firstEvent = incident.events[0];
-
-  if (!firstEvent) {
+  if (!incident.events.length) {
     return "No supporting evidence available.";
   }
 
@@ -315,7 +312,9 @@ function buildAttackStory(incident) {
     ];
   }
 
-  return ["Suspicious activity detected and correlated by SentinelX."];
+  return [
+    "Suspicious activity detected and correlated by SentinelX.",
+  ];
 }
 
 function buildResponse(incident) {
@@ -355,13 +354,11 @@ function App() {
       const logText = await file.text();
 
       if (!logText.trim()) {
-        throw new Error("The selected log file is empty.");
+        throw new Error(
+          "The selected log file is empty."
+        );
       }
 
-      /*
-       * SentinelX now analyzes the log locally.
-       * No Render API or external backend is required.
-       */
       const analysis = analyzeLogs(logText);
 
       setResult(analysis);
@@ -387,24 +384,37 @@ function App() {
 
   return (
     <div className="app">
+
+      {/* HEADER */}
       <header className="header">
         <div className="brand">
-          <div className="logo">SX</div>
+          <div className="logo">
+            <img
+              src={sentinelxLogo}
+              alt="SentinelX logo"
+            />
+          </div>
 
-          <div>
+          <div className="brand-copy">
             <h1>SentinelX</h1>
-            <p>Local Smart Log Sentinel</p>
+            <p>LOCAL SMART LOG SENTINEL</p>
           </div>
         </div>
 
-        <div className="api-status">
-          <span className="status-dot" />
-          LOCAL ANALYZER ONLINE
+        <div className="header-right">
+          <div className="api-status">
+            <span className="status-dot" />
+            LOCAL ANALYZER ONLINE
+          </div>
         </div>
       </header>
 
+      {/* MAIN */}
       <main className="container">
+
+        {/* HERO */}
         <section className="hero">
+
           <div className="hero-text">
             <span className="eyebrow">
               LOCAL SECURITY INTELLIGENCE
@@ -417,23 +427,30 @@ function App() {
             </h2>
 
             <p className="description">
-              SentinelX analyzes security logs directly in
-              your browser and turns suspicious activity
-              into explainable security incidents.
+              SentinelX analyzes security logs directly
+              in your browser and turns suspicious
+              activity into explainable security incidents.
             </p>
           </div>
 
+          {/* UPLOAD */}
           <div className="upload-card">
-            <div className="upload-icon">↑</div>
 
-            <h3>Analyze a log file</h3>
+            <div className="upload-icon">
+              ↑
+            </div>
+
+            <h3>
+              Analyze a log file
+            </h3>
 
             <p>
-              Upload a .log or .txt file. Analysis happens
-              locally in your browser.
+              Upload a .log or .txt file.
+              Analysis happens locally in your browser.
             </p>
 
             <label className="file-input">
+
               <input
                 type="file"
                 accept=".log,.txt,text/plain"
@@ -441,8 +458,11 @@ function App() {
               />
 
               <span>
-                {file ? file.name : "Choose log file"}
+                {file
+                  ? file.name
+                  : "Choose log file"}
               </span>
+
             </label>
 
             {file && (
@@ -462,20 +482,28 @@ function App() {
                 {error}
               </div>
             )}
+
           </div>
         </section>
 
+        {/* RESULTS */}
         {result && (
           <>
+            {/* STATS */}
             <section className="stats">
+
               <div className="stat-card">
                 <span>LOG EVENTS</span>
-                <strong>{result.totalLines}</strong>
+                <strong>
+                  {result.totalLines}
+                </strong>
               </div>
 
               <div className="stat-card">
                 <span>DETECTED EVENTS</span>
-                <strong>{result.stats.events}</strong>
+                <strong>
+                  {result.stats.events}
+                </strong>
               </div>
 
               <div className="stat-card">
@@ -491,129 +519,208 @@ function App() {
                   {result.stats.incidents}
                 </strong>
               </div>
+
             </section>
 
+            {/* INCIDENTS */}
             <section className="results">
+
               <div className="results-header">
+
                 <div>
                   <span className="eyebrow">
                     SECURITY ANALYSIS
                   </span>
 
-                  <h2>Detected Incidents</h2>
+                  <h2>
+                    Detected Incidents
+                  </h2>
                 </div>
 
                 <span className="live">
                   ● LIVE ANALYSIS
                 </span>
+
               </div>
 
               {result.incidents.length === 0 ? (
-                <div className="empty">
-                  <div className="empty-icon">✓</div>
 
-                  <h3>No threats detected</h3>
+                <div className="empty">
+
+                  <div className="empty-icon">
+                    ✓
+                  </div>
+
+                  <h3>
+                    No threats detected
+                  </h3>
 
                   <p>
-                    SentinelX did not find activity matching
-                    its current detection rules.
+                    SentinelX did not find activity
+                    matching its current detection rules.
                   </p>
+
                 </div>
+
               ) : (
+
                 <div className="incident-list">
-                  {result.incidents.map((incident, index) => (
-                    <article
-                      className="incident-card"
-                      key={`${incident.type}-${incident.source}-${index}`}
-                    >
-                      <div className="incident-top">
-                        <div>
-                          <span
-                            className={`severity ${incident.severity.toLowerCase()}`}
-                          >
-                            {incident.severity}
+
+                  {result.incidents.map(
+                    (incident, index) => (
+
+                      <article
+                        className="incident-card"
+                        key={`${incident.type}-${incident.source}-${index}`}
+                      >
+
+                        <div className="incident-top">
+
+                          <div>
+
+                            <span
+                              className={`severity ${incident.severity.toLowerCase()}`}
+                            >
+                              {incident.severity}
+                            </span>
+
+                            <h3>
+                              {incident.type}
+                            </h3>
+
+                            <p className="incident-meta">
+                              Source:{" "}
+                              <strong>
+                                {incident.source}
+                              </strong>
+
+                              {" · "}
+
+                              Events:{" "}
+
+                              <strong>
+                                {incident.count}
+                              </strong>
+                            </p>
+
+                          </div>
+
+                        </div>
+
+                        {/* EVIDENCE */}
+                        <div className="incident-grid">
+
+                          <div className="detail-block">
+
+                            <span>
+                              EVIDENCE
+                            </span>
+
+                            <p>
+                              {incident.evidence}
+                            </p>
+
+                          </div>
+
+                          <div className="detail-block">
+
+                            <span>
+                              WHY DETECTED
+                            </span>
+
+                            <p>
+                              {incident.why}
+                            </p>
+
+                          </div>
+
+                        </div>
+
+                        {/* ATTACK STORY */}
+                        <div className="story">
+
+                          <span>
+                            ATTACK STORY
                           </span>
 
-                          <h3>{incident.type}</h3>
+                          <div className="timeline">
 
-                          <p className="incident-meta">
-                            Source:{" "}
-                            <strong>
-                              {incident.source}
-                            </strong>
-                            {" · "}
-                            Events:{" "}
-                            <strong>
-                              {incident.count}
-                            </strong>
-                          </p>
-                        </div>
-                      </div>
+                            {incident.story.map(
+                              (step, stepIndex) => (
 
-                      <div className="incident-grid">
-                        <div className="detail-block">
-                          <span>EVIDENCE</span>
-                          <p>{incident.evidence}</p>
-                        </div>
+                                <div
+                                  className="timeline-item"
+                                  key={stepIndex}
+                                >
 
-                        <div className="detail-block">
-                          <span>WHY DETECTED</span>
-                          <p>{incident.why}</p>
-                        </div>
-                      </div>
+                                  <div className="timeline-dot">
+                                    {stepIndex + 1}
+                                  </div>
 
-                      <div className="story">
-                        <span>ATTACK STORY</span>
+                                  <p>
+                                    {step}
+                                  </p>
 
-                        <div className="timeline">
-                          {incident.story.map(
-                            (step, stepIndex) => (
-                              <div
-                                className="timeline-item"
-                                key={stepIndex}
-                              >
-                                <div className="timeline-dot">
-                                  {stepIndex + 1}
                                 </div>
 
-                                <p>{step}</p>
-                              </div>
-                            )
-                          )}
+                              )
+                            )}
+
+                          </div>
+
                         </div>
-                      </div>
 
-                      <div className="response">
-                        <span>
-                          RECOMMENDED RESPONSE
-                        </span>
+                        {/* RESPONSE */}
+                        <div className="response">
 
-                        <p>{incident.response}</p>
-                      </div>
-                    </article>
-                  ))}
+                          <span>
+                            RECOMMENDED RESPONSE
+                          </span>
+
+                          <p>
+                            {incident.response}
+                          </p>
+
+                        </div>
+
+                      </article>
+
+                    )
+                  )}
+
                 </div>
+
               )}
+
             </section>
 
+            {/* RAW EVENTS */}
             <section className="results">
+
               <div className="results-header">
+
                 <div>
                   <span className="eyebrow">
                     RAW TELEMETRY
                   </span>
 
-                  <h2>Analyzed Events</h2>
+                  <h2>
+                    Analyzed Events
+                  </h2>
                 </div>
+
               </div>
 
               <div className="events">
+
                 {result.analyzedEvents.map(
                   (event, index) => (
+
                     <div
                       className="event-row"
                       key={`${event.id}-${index}`}
                     >
+
                       <div>
                         <span
                           className={`severity ${event.severity.toLowerCase()}`}
@@ -623,49 +730,163 @@ function App() {
                       </div>
 
                       <div className="event-main">
-                        <strong>{event.type}</strong>
+
+                        <strong>
+                          {event.type}
+                        </strong>
 
                         <span>
-                          {event.source} ·{" "}
-                          {event.timestamp}
+                          {event.source}
+                          {" · "}
+                          {event.username}
                         </span>
+
                       </div>
 
-                      <code>{event.raw}</code>
+                      <code>
+                        {event.raw}
+                      </code>
+
                     </div>
+
                   )
                 )}
+
               </div>
+
             </section>
           </>
         )}
 
-        {!result && !loading && !error && (
-          <section className="empty">
-            <div className="empty-icon">⌁</div>
+        {/* INITIAL STATE */}
+        {!result &&
+          !loading &&
+          !error && (
 
-            <h3>Ready for analysis</h3>
+            <section className="empty">
 
-            <p>
-              Upload a security log to begin local threat
-              detection.
-            </p>
-          </section>
-        )}
+              <div className="empty-icon">
+                ⌁
+              </div>
 
+              <h3>
+                Ready for analysis
+              </h3>
+
+              <p>
+                Upload a security log to begin
+                local threat detection.
+              </p>
+
+            </section>
+
+          )}
+
+        {/* LOADING */}
         {loading && (
+
           <section className="empty">
+
             <div className="spinner" />
 
-            <h3>Analyzing telemetry...</h3>
+            <h3>
+              Analyzing telemetry...
+            </h3>
 
             <p>
-              SentinelX is parsing and correlating the
-              selected log locally.
+              SentinelX is parsing and correlating
+              the selected log locally.
             </p>
+
           </section>
+
         )}
+
       </main>
+
+      {/* FOOTER */}
+      <footer className="footer">
+
+        <div className="footer-inner">
+
+          <div className="footer-brand">
+
+            <img
+              src={sentinelxLogo}
+              alt="SentinelX"
+              className="footer-logo"
+            />
+
+            <div>
+              <strong>
+                SentinelX
+              </strong>
+
+              <span>
+                Local Smart Log Sentinel
+              </span>
+            </div>
+
+          </div>
+
+          <div className="footer-socials">
+
+            <span className="social-label">
+              CONNECT
+            </span>
+
+            <a
+              href="https://www.instagram.com/cyber_sangram"
+              target="_blank"
+              rel="noreferrer"
+              className="social-link"
+            >
+              <span>IG</span>
+              Instagram
+            </a>
+
+            <a
+              href="https://www.linkedin.com/in/sangramcloud"
+              target="_blank"
+              rel="noreferrer"
+              className="social-link"
+            >
+              <span>in</span>
+              LinkedIn
+            </a>
+
+            <a
+              href="https://www.github.com/sangram-net"
+              target="_blank"
+              rel="noreferrer"
+              className="social-link"
+            >
+              <span>GH</span>
+              GitHub
+            </a>
+
+          </div>
+
+        </div>
+
+        <div className="footer-bottom">
+
+          <span>
+            © 2026 SentinelX
+          </span>
+
+          <span>
+            Built for WCC Launchpad 30
+          </span>
+
+          <span>
+            LOCAL-FIRST SECURITY
+          </span>
+
+        </div>
+
+      </footer>
+
     </div>
   );
 }
