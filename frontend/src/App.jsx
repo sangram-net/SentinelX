@@ -1,378 +1,319 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import "./App.css";
 
-const API_URL = "https://sentinelx-htw7.onrender.com";
-
-const formatNumber = (value) => Number(value || 0).toLocaleString();
+const API_URL =
+  import.meta.env.VITE_API_URL || "https://sentinelx-htw7.onrender.com";
 
 function App() {
-  const fileInputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
-  const [dragActive, setDragActive] = useState(false);
-
-  const events = result?.events || [];
-  const threats = result?.threats || [];
-  const highSeverity = threats.filter(
-    (threat) => String(threat.severity || "").toUpperCase() === "HIGH"
-  ).length;
-  const mediumSeverity = threats.filter(
-    (threat) => String(threat.severity || "").toUpperCase() === "MEDIUM"
-  ).length;
-
-  const selectFile = (selectedFile) => {
-    if (!selectedFile) return;
-
-    const name = selectedFile.name.toLowerCase();
-    if (!name.endsWith(".log") && !name.endsWith(".txt")) {
-      setError("Unsupported file type. Please choose a .log or .txt file.");
-      setFile(null);
-      return;
-    }
-
-    if (selectedFile.size > 10 * 1024 * 1024) {
-      setError("File is too large. Please upload a log file under 10 MB.");
-      setFile(null);
-      return;
-    }
-
-    setFile(selectedFile);
-    setResult(null);
-    setError("");
-  };
 
   const analyzeLog = async () => {
-    if (!file || loading) return;
+    if (!file) return;
 
     setLoading(true);
     setError("");
     setResult(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      const logText = await file.text();
 
-      const response = await fetch(`${API_URL}/api/logs/upload`, {
+      const response = await fetch(`${API_URL}/api/analyze`, {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          log_text: logText,
+          filename: file.name,
+        }),
       });
 
+      const contentType = response.headers.get("content-type") || "";
+
       if (!response.ok) {
-        throw new Error(`API returned ${response.status}`);
+        let detail = `API request failed (${response.status})`;
+
+        if (contentType.includes("application/json")) {
+          const body = await response.json().catch(() => null);
+          if (body?.detail) detail = body.detail;
+        }
+
+        throw new Error(detail);
+      }
+
+      if (!contentType.includes("application/json")) {
+        throw new Error("SentinelX API returned a non-JSON response.");
       }
 
       const data = await response.json();
       setResult(data);
     } catch (err) {
       console.error(err);
-      setError(
-        "SentinelX could not reach the analysis engine. Check that the FastAPI backend is running and try again."
-      );
+
+      if (err instanceof TypeError) {
+        setError(
+          `Unable to reach SentinelX API at ${API_URL}. Check that the Render service is live and the API URL is correct.`
+        );
+      } else {
+        setError(err.message || "Unable to analyze the security log.");
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const resetAnalysis = () => {
-    setFile(null);
-    setResult(null);
-    setError("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
+  const events = result?.events || [];
+  const threats = result?.threats || [];
 
-  const getSource = (threat) => threat.source || "Unknown source";
+  const highSeverity = threats.filter(
+    (threat) => String(threat.severity).toUpperCase() === "HIGH"
+  ).length;
+
+  const getSource = (threat) => threat.source || "Unknown";
 
   const getThreatStory = (threat) => {
-    const type = String(threat.type || "Suspicious activity");
-    const lower = type.toLowerCase();
+    const type = String(threat.type || "Suspicious Activity");
 
-    if (lower.includes("brute")) {
-      return `A source generated ${threat.count || "multiple"} failed authentication attempts. SentinelX grouped these events as a possible SSH brute-force attack.`;
+    if (type.toLowerCase().includes("brute")) {
+      return `A source generated ${
+        threat.count || "multiple"
+      } failed authentication attempts. SentinelX grouped these events as a possible SSH brute-force attack.`;
     }
-    if (lower.includes("spray")) {
+
+    if (type.toLowerCase().includes("spray")) {
       return "A single source targeted multiple user accounts with failed authentication attempts. This pattern is consistent with password spraying.";
     }
-    if (lower.includes("sql")) {
-      return "SentinelX identified a suspicious SQL-related payload in request data. The activity may represent an SQL injection attempt.";
+
+    if (type.toLowerCase().includes("sql")) {
+      return "SentinelX identified a suspicious SQL-related payload in the request data. The activity may represent an SQL injection attempt.";
     }
-    if (lower.includes("scan")) {
-      return "Multiple paths or endpoints were accessed from the same source in a short period, indicating possible reconnaissance or web scanning activity.";
+
+    if (type.toLowerCase().includes("scan")) {
+      return "Multiple paths or endpoints were accessed from the same source, indicating possible reconnaissance or web scanning activity.";
     }
-    return `SentinelX correlated ${threat.count || "multiple"} related security events into a potential ${type.toLowerCase()} incident.`;
+
+    return `SentinelX identified ${
+      threat.count || "suspicious"
+    } related security events and grouped them into a potential ${type.toLowerCase()} incident.`;
   };
 
   const getRecommendation = (threat) => {
     const type = String(threat.type || "").toLowerCase();
+
     if (type.includes("brute") || type.includes("spray")) {
       return "Investigate the source IP, review affected accounts, enforce rate limiting, and temporarily block the source if confirmed malicious.";
     }
+
     if (type.includes("sql")) {
       return "Inspect the affected endpoint, review application logs, validate input handling, and investigate the source IP.";
     }
+
     if (type.includes("scan")) {
       return "Review requested paths, identify the source, and investigate whether reconnaissance preceded another attack.";
     }
+
     return "Investigate the source and surrounding events before taking containment action.";
   };
 
   const getTimelineEventType = (event) => {
     const type = String(event.event_type || "").toLowerCase();
+
     if (type.includes("failed")) return "FAILED AUTHENTICATION";
     if (type.includes("login")) return "LOGIN EVENT";
     if (type.includes("sql")) return "SQL INJECTION";
     if (type.includes("scan")) return "WEB SCAN";
+
     return "SECURITY EVENT";
   };
 
   const getTimelineTime = (event) => {
     if (!event.timestamp) return "--:--:--";
-    const date = new Date(event.timestamp);
-    if (Number.isNaN(date.getTime())) return String(event.timestamp);
-    return date.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+
+    try {
+      const date = new Date(event.timestamp);
+
+      if (Number.isNaN(date.getTime())) {
+        return String(event.timestamp);
+      }
+
+      return date.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } catch {
+      return String(event.timestamp);
+    }
   };
 
-  const getSeverityClass = (severity) =>
-    String(severity || "MEDIUM").toLowerCase();
-
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="topbar-inner">
-          <div className="brand">
-            <div className="brand-mark">
-              <img src="/src/assets/sentinelx-logo.png" alt="SentinelX logo" />
-            </div>
-            <div className="brand-copy">
-              <strong>SentinelX</strong>
-              <span>LOCAL SMART LOG SENTINEL</span>
-            </div>
-          </div>
+    <div className="app">
+      <header className="header">
+        <div className="brand">
+          <div className="logo">X</div>
 
-          <div className="topbar-right">
-            <span className="environment-badge">LOCAL ANALYSIS</span>
-            <span className="api-indicator">
-              <i /> ENGINE READY
-            </span>
+          <div>
+            <h2>SentinelX</h2>
+            <span>LOCAL SMART LOG SENTINEL</span>
           </div>
+        </div>
+
+        <div className="api-status">
+          <span></span>
+          API ONLINE
         </div>
       </header>
 
-      <main className="page">
-        <section className="hero-section">
-          <div className="hero-copy">
-            <div className="section-kicker">
-              <span className="kicker-line" /> SECURITY OPERATIONS
-            </div>
+      <main className="container">
+        <section className="hero">
+          <div className="hero-text">
+            <p className="eyebrow">SECURITY OPERATIONS</p>
+
             <h1>
-              Turn raw logs into
-              <span>security intelligence.</span>
+              Turn logs into insights.
+              <br />
+              <strong>Detect threats.</strong> Stay ahead.
             </h1>
-            <p>
-              SentinelX parses authentication and web logs, detects suspicious
-              patterns, correlates related events, and explains what happened
-              in a security-operator friendly view.
+
+            <p className="description">
+              Analyze authentication and web logs, detect suspicious activity,
+              and turn raw events into understandable security incidents.
             </p>
-
-            <div className="hero-points">
-              <div>
-                <b>01</b>
-                <span>Detect</span>
-              </div>
-              <div>
-                <b>02</b>
-                <span>Correlate</span>
-              </div>
-              <div>
-                <b>03</b>
-                <span>Explain</span>
-              </div>
-            </div>
           </div>
 
-          <div className="analysis-panel">
-            <div className="panel-topline">
-              <div>
-                <span className="panel-label">ANALYSIS CONSOLE</span>
-                <h2>Inspect a log file</h2>
-              </div>
-              <span className="panel-code">SX / 01</span>
-            </div>
+          <div className="upload-card">
+            <div className="upload-icon">↑</div>
 
-            <div
-              className={`drop-zone ${dragActive ? "drag-active" : ""} ${
-                file ? "has-file" : ""
-              }`}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDragActive(true);
-              }}
-              onDragLeave={() => setDragActive(false)}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDragActive(false);
-                selectFile(event.dataTransfer.files?.[0]);
-              }}
-              onClick={() => fileInputRef.current?.click()}
-            >
+            <h3>Analyze Security Logs</h3>
+
+            <p>Upload a .log or .txt file to begin analysis.</p>
+
+            <label className="file-input">
+              {file ? file.name : "Choose Log File"}
+
               <input
-                ref={fileInputRef}
                 type="file"
-                accept=".log,.txt"
-                onChange={(event) => selectFile(event.target.files?.[0])}
+                accept=".log,.txt,text/plain"
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] || null);
+                  setResult(null);
+                  setError("");
+                }}
               />
-              <div className="drop-icon">
-                <span>+</span>
-              </div>
-              <strong>{file ? file.name : "Drop a security log here"}</strong>
-              <p>
-                {file
-                  ? `${(file.size / 1024).toFixed(1)} KB ready for analysis`
-                  : "or click to browse from your computer"}
-              </p>
-              <small>SUPPORTED: .LOG · .TXT · MAX 10 MB</small>
-            </div>
+            </label>
 
-            <div className="console-actions">
-              <button
-                className="primary-button"
-                onClick={analyzeLog}
-                disabled={!file || loading}
-              >
-                <span>{loading ? "ANALYZING" : "ANALYZE LOG"}</span>
-                <b>{loading ? "…" : "→"}</b>
-              </button>
-              {file && (
-                <button className="secondary-button" onClick={resetAnalysis}>
-                  Clear
-                </button>
-              )}
-            </div>
-
-            <div className="console-note">
-              <span>●</span>
-              Your selected log is sent only to the configured SentinelX API
-              for analysis.
-            </div>
+            <button onClick={analyzeLog} disabled={!file || loading}>
+              {loading ? "Analyzing..." : "Analyze Log"}
+            </button>
           </div>
         </section>
 
-        {error && (
-          <div className="error-banner">
-            <div className="error-symbol">!</div>
-            <div>
-              <strong>ANALYSIS UNAVAILABLE</strong>
-              <p>{error}</p>
-            </div>
-          </div>
-        )}
+        {error && <div className="error">⚠ {error}</div>}
 
-        <section className="metric-grid">
-          <div className="metric-card">
-            <span>EVENTS ANALYZED</span>
-            <strong>{formatNumber(events.length)}</strong>
-            <small>parsed telemetry</small>
+        <section className="stats">
+          <div className="stat-card">
+            <span>TOTAL EVENTS</span>
+            <strong>{events.length}</strong>
           </div>
-          <div className="metric-card accent">
+
+          <div className="stat-card">
             <span>THREATS DETECTED</span>
-            <strong>{formatNumber(threats.length)}</strong>
-            <small>correlated findings</small>
+            <strong>{threats.length}</strong>
           </div>
-          <div className="metric-card danger">
+
+          <div className="stat-card">
             <span>HIGH SEVERITY</span>
-            <strong>{formatNumber(highSeverity)}</strong>
-            <small>requires attention</small>
+            <strong className="orange">{highSeverity}</strong>
           </div>
-          <div className="metric-card">
-            <span>MEDIUM SEVERITY</span>
-            <strong>{formatNumber(mediumSeverity)}</strong>
-            <small>investigate context</small>
+
+          <div className="stat-card">
+            <span>INCIDENTS</span>
+            <strong>{threats.length}</strong>
           </div>
         </section>
 
-        <section className="section-block">
-          <div className="section-heading">
+        <section className="results">
+          <div className="results-header">
             <div>
-              <span className="section-kicker">DETECTION ENGINE</span>
-              <h2>Incident intelligence</h2>
-              <p>
-                Correlated findings with evidence, reasoning, attack narrative,
-                and a suggested defensive response.
-              </p>
+              <p className="eyebrow">DETECTION ENGINE</p>
+              <h2>Recent Incidents</h2>
             </div>
-            <div className="live-badge">
-              <i /> {result ? "ANALYSIS COMPLETE" : "WAITING FOR LOG"}
+
+            <div className="live">
+              <span></span>
+              LIVE
             </div>
           </div>
 
           {!result && !loading && (
-            <div className="empty-state">
-              <div className="empty-orbit">SX</div>
-              <span>NO TELEMETRY LOADED</span>
-              <h3>Ready for your first investigation.</h3>
+            <div className="empty">
+              <div className="empty-icon">⌁</div>
+              <h3>No incidents detected</h3>
               <p>
-                Upload a sanitized authentication or web log above to populate
-                the detection workspace.
+                Upload a security log to start analyzing suspicious activity.
               </p>
             </div>
           )}
 
           {loading && (
-            <div className="empty-state loading-state">
-              <div className="loader-ring" />
-              <span>DETECTION ENGINE ACTIVE</span>
-              <h3>Correlating security events…</h3>
+            <div className="empty">
+              <div className="spinner"></div>
+              <h3>Analyzing security logs...</h3>
               <p>
-                Parsing telemetry and evaluating SentinelX detection rules.
+                SentinelX detection engine is processing your events.
               </p>
             </div>
           )}
 
           {result && threats.length === 0 && (
-            <div className="empty-state clean-state">
-              <div className="clean-check">✓</div>
-              <span>NO MATCHING THREATS</span>
-              <h3>Environment looks quiet.</h3>
+            <div className="empty">
+              <div className="success-icon">✓</div>
+              <h3>No threats detected</h3>
               <p>
-                SentinelX analyzed {formatNumber(events.length)} events and
-                found no suspicious activity matching the current rules.
+                SentinelX analyzed {events.length} events and found no
+                suspicious activity.
               </p>
             </div>
           )}
 
           {threats.length > 0 && (
-            <div className="incident-grid">
+            <div className="threat-list">
               {threats.map((threat, index) => (
-                <article className="incident-card" key={index}>
-                  <div className="incident-header">
+                <div className="threat-card" key={index}>
+                  <div className="threat-top">
                     <div>
-                      <span className="incident-id">
-                        INCIDENT / {String(index + 1).padStart(3, "0")}
+                      <span className="incident-number">
+                        INCIDENT #{String(index + 1).padStart(3, "0")}
                       </span>
+
                       <h3>{threat.type || "Suspicious Activity"}</h3>
                     </div>
-                    <span className={`severity ${getSeverityClass(threat.severity)}`}>
+
+                    <span
+                      className={`severity ${String(
+                        threat.severity || "MEDIUM"
+                      ).toLowerCase()}`}
+                    >
                       {threat.severity || "MEDIUM"}
                     </span>
                   </div>
 
-                  <div className="incident-meta">
+                  <div className="threat-details">
                     <div>
-                      <span>EVENTS</span>
-                      <b>{threat.count || 0}</b>
+                      <span>COUNT</span>
+                      <strong>{threat.count || 0}</strong>
                     </div>
+
                     <div>
                       <span>SOURCE</span>
-                      <b>{getSource(threat)}</b>
+                      <strong>{getSource(threat)}</strong>
                     </div>
                   </div>
 
-                  <div className="intel-block evidence-block">
+                  <div className="evidence">
                     <span>EVIDENCE</span>
                     <p>
                       {threat.evidence ||
@@ -381,117 +322,272 @@ function App() {
                     </p>
                   </div>
 
-                  <div className="intel-block">
-                    <span>WHY SENTINELX FLAGGED IT</span>
+                  <div className="explanation">
+                    <span>WHY DETECTED</span>
                     <p>
                       {threat.message ||
                         "Multiple related security events matched a detection rule."}
                     </p>
                   </div>
 
-                  <div className="intel-block story-block">
+                  <div className="attack-story">
                     <span>ATTACK STORY</span>
-                    <p>{getThreatStory(threat)}</p>
+                    <p>{threat.attack_story || getThreatStory(threat)}</p>
                   </div>
 
-                  <div className="response-block">
+                  <div className="recommendation">
                     <span>RECOMMENDED RESPONSE</span>
-                    <p>{getRecommendation(threat)}</p>
+                    <p>
+                      {threat.recommendation || getRecommendation(threat)}
+                    </p>
                   </div>
-                </article>
+                </div>
               ))}
             </div>
           )}
         </section>
 
         {result && events.length > 0 && (
-          <>
-            <section className="section-block timeline-section">
-              <div className="section-heading compact">
-                <div>
-                  <span className="section-kicker">EVENT CORRELATION</span>
-                  <h2>Attack timeline</h2>
-                </div>
-                <span className="live-badge"><i /> CORRELATED</span>
+          <section className="events">
+            <div className="results-header">
+              <div>
+                <p className="eyebrow">EVENT CORRELATION</p>
+                <h2>Attack Timeline</h2>
               </div>
 
-              <div className="timeline">
-                {events.map((event, index) => (
-                  <div className="timeline-row" key={index}>
-                    <div className="timeline-marker">
-                      <span />
-                    </div>
-                    <time>{getTimelineTime(event)}</time>
-                    <div className="timeline-event">
-                      <span>{getTimelineEventType(event)}</span>
-                      <strong>{event.event_type || "Security Event"}</strong>
-                      <p>{event.raw || "No raw event data available."}</p>
-                      {(event.username || event.source) && (
-                        <small>
-                          {event.username ? `Account: ${event.username}` : ""}
-                          {event.username && event.source ? " · " : ""}
-                          {event.source ? `Source: ${event.source}` : ""}
-                        </small>
-                      )}
-                    </div>
+              <div className="live">
+                <span></span>
+                CORRELATED
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: "25px 10px 10px",
+                position: "relative",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  left: "34px",
+                  top: "30px",
+                  bottom: "35px",
+                  width: "1px",
+                  background: "#3a3a3a",
+                }}
+              ></div>
+
+              {events.map((event, index) => (
+                <div
+                  key={index}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "50px 110px 1fr",
+                    gap: "15px",
+                    alignItems: "start",
+                    position: "relative",
+                    marginBottom: "28px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "10px",
+                      height: "10px",
+                      borderRadius: "50%",
+                      background: "#ff7a00",
+                      boxShadow: "0 0 12px rgba(255,122,0,0.45)",
+                      marginTop: "5px",
+                      marginLeft: "29px",
+                      position: "relative",
+                      zIndex: 2,
+                    }}
+                  ></div>
+
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "#888",
+                      fontFamily: "monospace",
+                      paddingTop: "1px",
+                    }}
+                  >
+                    {getTimelineTime(event)}
                   </div>
-                ))}
-              </div>
-            </section>
 
-            {threats.length > 0 && (
-              <section className="overview-strip">
-                <div>
-                  <span className="section-kicker">CORRELATION RESULT</span>
-                  <h2>
+                  <div
+                    style={{
+                      border: "1px solid #252525",
+                      background: "#0c0c0c",
+                      borderRadius: "6px",
+                      padding: "12px 14px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "9px",
+                        letterSpacing: "1.5px",
+                        color: "#ff7a00",
+                        marginBottom: "6px",
+                      }}
+                    >
+                      {getTimelineEventType(event)}
+                    </div>
+
+                    <strong
+                      style={{
+                        display: "block",
+                        color: "#f1f1f1",
+                        fontSize: "13px",
+                        marginBottom: "5px",
+                      }}
+                    >
+                      {event.event_type || "Security Event"}
+                    </strong>
+
+                    <p
+                      style={{
+                        margin: 0,
+                        color: "#777",
+                        fontSize: "11px",
+                        lineHeight: "1.5",
+                      }}
+                    >
+                      {event.raw || "No raw event data available."}
+                    </p>
+
+                    {(event.username || event.source) && (
+                      <div
+                        style={{
+                          marginTop: "8px",
+                          color: "#555",
+                          fontSize: "10px",
+                        }}
+                      >
+                        {event.username ? `Account: ${event.username}` : ""}
+                        {event.username && event.source ? " · " : ""}
+                        {event.source ? `Source: ${event.source}` : ""}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {threats.length > 0 && (
+                <div
+                  style={{
+                    marginTop: "10px",
+                    marginLeft: "50px",
+                    border: "1px solid #4b260c",
+                    background: "rgba(255,122,0,0.05)",
+                    borderRadius: "6px",
+                    padding: "16px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "9px",
+                      letterSpacing: "1.5px",
+                      color: "#ff7a00",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    CORRELATION RESULT
+                  </div>
+
+                  <strong
+                    style={{
+                      color: "#f1f1f1",
+                      fontSize: "14px",
+                    }}
+                  >
                     {threats.length} security incident
-                    {threats.length !== 1 ? "s" : ""} correlated.
-                  </h2>
-                </div>
-                <p>
-                  SentinelX connected observed telemetry into explainable
-                  findings instead of presenting isolated log lines.
-                </p>
-              </section>
-            )}
+                    {threats.length !== 1 ? "s" : ""} correlated
+                  </strong>
 
-            <section className="section-block telemetry-section">
-              <div className="section-heading compact">
-                <div>
-                  <span className="section-kicker">RAW TELEMETRY</span>
-                  <h2>Analyzed events</h2>
+                  <p
+                    style={{
+                      color: "#777",
+                      fontSize: "11px",
+                      lineHeight: "1.5",
+                      marginBottom: 0,
+                    }}
+                  >
+                    SentinelX correlated the observed events and identified
+                    suspicious activity requiring investigation.
+                  </p>
                 </div>
-                <span className="event-count">{events.length} EVENTS</span>
+              )}
+            </div>
+          </section>
+        )}
+
+        {result && threats.length > 0 && (
+          <section className="events">
+            <div className="results-header">
+              <div>
+                <p className="eyebrow">INCIDENT ANALYSIS</p>
+                <h2>Attack Overview</h2>
               </div>
+            </div>
 
-              <div className="telemetry-list">
-                {events.map((event, index) => (
-                  <div className="telemetry-row" key={index}>
-                    <span className="telemetry-number">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <div>
-                      <strong>{event.event_type || "Security Event"}</strong>
-                      <p>{event.raw || "No raw event data available."}</p>
-                    </div>
-                    <span className="telemetry-source">
-                      {event.username || event.source || "Unknown"}
-                    </span>
+            <div className="event-list">
+              {threats.map((threat, index) => (
+                <div className="event" key={index}>
+                  <div className="event-number">
+                    {String(index + 1).padStart(2, "0")}
                   </div>
-                ))}
+
+                  <div className="event-content">
+                    <strong>{threat.type || "Security Incident"}</strong>
+                    <p>
+                      Source: {getSource(threat)} · Events:{" "}
+                      {threat.count || 0} · Severity:{" "}
+                      {threat.severity || "UNKNOWN"}
+                    </p>
+                  </div>
+
+                  <div className="event-user">
+                    {threat.severity || "UNKNOWN"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {result && events.length > 0 && (
+          <section className="events">
+            <div className="results-header">
+              <div>
+                <p className="eyebrow">RAW TELEMETRY</p>
+                <h2>Analyzed Events</h2>
               </div>
-            </section>
-          </>
+            </div>
+
+            <div className="event-list">
+              {events.map((event, index) => (
+                <div className="event" key={index}>
+                  <div className="event-number">
+                    {String(index + 1).padStart(2, "0")}
+                  </div>
+
+                  <div className="event-content">
+                    <strong>{event.event_type || "Security Event"}</strong>
+                    <p>{event.raw}</p>
+                  </div>
+
+                  <div className="event-user">
+                    {event.username || event.source || "Unknown"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
       </main>
 
-      <footer className="footer">
-        <div>
-          <strong>SentinelX</strong>
-          <span>LOCAL SMART LOG SENTINEL</span>
-        </div>
-        <p>Analyze responsibly. Use sanitized logs and authorized data only.</p>
-      </footer>
+      <footer>SentinelX · Local Smart Log Sentinel</footer>
     </div>
   );
 }
